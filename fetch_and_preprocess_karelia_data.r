@@ -299,6 +299,18 @@ add_age_in_1970_and_at_marriage <- function(person) {
   return(person)
 }
 
+add_couple_id_to_person_table <- function(person) {
+  # just add id and spouse id - these values are unique to each couple i'm pretty sure (e.g no duplicate couples).
+  person$couple_id <- person$id + person$spouse_id
+  
+  # arrange them
+  person <- person %>% arrange(couple_id)
+  
+  # then do that sequential labeling - we have to do this a second time in the model code because of missing cases
+  person$couple_id_seq <- cumsum(c(1,as.numeric(diff(person$couple_id)) != 0))
+  return(person)
+}
+
 preprocess_place_table <- function(place, pops) {
   place <- fix_encoding_in_place_table(place)
   
@@ -456,7 +468,10 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   person <- add_outbred_to_person_table(person)
   person <- add_sons_and_daughters_to_person_table(person, child)
   person <- add_age_in_1970_and_at_marriage(person)
+  person <- add_couple_id_to_person_table(person)
   person_postprocessed <- postprocess_person_table(person)
+  return(person_postprocessed)
 }
 
 person_data <- get_data_from_server_and_preprocess_it()
+saveRDS(person_data, "~/person_data.rds")
