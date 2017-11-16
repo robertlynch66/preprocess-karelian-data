@@ -199,13 +199,13 @@ add_professions_to_person_table <- function(person, profession) {
   person <- dplyr::rename(person, profession = name, profession_en = profession_EN)
   
   # add spouses profession (just social class)
-  person_filt <- person %>% select("social_class", "education", "spouse_id")
-  person <- person_filt %>%
-    left_join(person, by=c("spouse_id"="id"))
-  
+  person_filt <- person %>% select("social_class", "education", "id", "spouse_id")
+  person <- person %>%
+    left_join(person_filt, by=c("id"="spouse_id"))
+  drops <- "id.y"
+  person <- drop_columns_from_table(person, drops)
   person <- dplyr::rename(person, education = education.x, social_class = social_class.x,
-                          education_spouse = education.y, social_class_spouse = social_class.y,
-                          id = spouse_id.y)
+                          education_spouse = education.y, social_class_spouse = social_class.y)
   
   return(person)
 }
