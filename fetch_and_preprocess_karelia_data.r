@@ -311,6 +311,17 @@ add_couple_id_to_person_table <- function(person) {
   return(person)
 }
 
+add_hectares_to_person_table <- function(person, farms) {
+  person<-person %>%
+    left_join (farms, by = c("farmDetailsId"="id")) 
+  
+  drops <- c("dairyFarm","coldFarm",             
+             "asutustila","maanhankintalaki",      
+             "editLog","animalHusbandry") 
+  person <- drop_columns_from_table(person, drops)
+  return(person)
+}
+
 preprocess_place_table <- function(place, pops) {
   place <- fix_encoding_in_place_table(place)
   
@@ -408,16 +419,6 @@ read_names_from_disk <- function(path="") {
   return(karelian_names)
 }
 
-rename_person_columns <- function(person) {
-  names(person5)<-c("birthplace","population",
-                    "birthregion","birth_lat","birth_long","birthYear.spouse",
-                    "birthPlaceId.spouse","professionId.spouse","returnedKarelia.spouse",
-                    "weedingyear_spouse", "kids.spouse","birthplace.spouse","ambiguous_region_spouse",
-                    "population.spouse","birthregion.spouse","birth_lat_spouse","birth_long_spouse")
-  
-  dplyr::rename(person, primary = primaryPerson, )
-}
-
 drop_columns_from_table <- function(table, names_to_drop) {
   return(table[, !(names(table) %in% names_to_drop)])
 }
@@ -438,6 +439,7 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   child <- dbReadTable(connection, "Child")
   livingrecord <- dbReadTable(connection, "LivingRecord")
   place<- dbReadTable(connection, "Place")
+  farms <- dbReadTable(connection, "FarmDetails")
 
   end_time <- Sys.time()
   
@@ -469,6 +471,7 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   person <- add_sons_and_daughters_to_person_table(person, child)
   person <- add_age_in_1970_and_at_marriage(person)
   person <- add_couple_id_to_person_table(person)
+  person <- add_hectares_to_person_table(person, farms)
   person_postprocessed <- postprocess_person_table(person)
   return(person_postprocessed)
 }
