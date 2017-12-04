@@ -362,7 +362,7 @@ add_first_and_last_destinations_to_person_table <- function(person, pops, living
   person <- drop_columns_from_table(person, drops)
   person <- dplyr::rename(person,
                           fdf_population = population.x.x, fdf_longitude = longitude.x, fdf_latitude = latitude.x,
-                          rdk_population = population.x.y, rdk_longitude = longitude.y, rdk_laititude = latitude.y)
+                          rdk_population = population.x.y, rdk_longitude = longitude.y, rdk_latitude = latitude.y)
   
   return(person) 
 }
