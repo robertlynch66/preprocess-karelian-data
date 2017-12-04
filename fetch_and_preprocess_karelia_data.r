@@ -23,7 +23,7 @@ load_pops_from_googlesheets <- function() {
   
   # get the populations google sheet
   pops <- gs_title("Location populations")
-
+  
   # get the sheet
   pops <- gs_read(ss=pops, ws = "Sheet1", header=TRUE)
   
@@ -34,16 +34,16 @@ load_pops_from_googlesheets <- function() {
   # clean the google sheets docs
   names(pops) <- c("DONT_USE", "frequency", "name","region",
                    "name2", "population","latitude","longitude")
-  pops <- select(pops,1:4,6:8)
+  #pops <- select(pops,1:4,6:8)
   return(pops)
 }
 
 load_jobs_from_googlesheets <- function() {
   # Read in the csv files populations and occupations with social status
-
+  
   # get the professions google sheet
   jobs <- gs_title("Occupations")
-
+  
   # get the sheet
   jobs <- gs_read(ss=jobs, ws = "Sheet1", header=TRUE)
   
@@ -66,7 +66,7 @@ fix_encoding_in_place_table <- function(place) {
   }
   # convert the column in the dataframe to the new vector
   place$name <- b
-
+  
   c <- vector(mode="character", length=length(place$stemmedName))
   # do a for loop that fills in the vector 'b' with the character conversions
   for (i in 1:length(place$stemmedname)) {
@@ -104,11 +104,11 @@ add_spouse_ids_to_person_table <- function(person, marriage) {
   person <- person %>% 
     left_join(marriage, by=c("id"="manId")) %>% 
     #rename the womanId variable to wife_id
-    rename(wife_id=womanId) %>%
+    dplyr::rename(wife_id=womanId) %>%
     # add the married women
     left_join(marriage, by=c("id"="womanId")) %>% 
-    #rename the womanId variable to wife_id
-    rename(husband_id=manId) 
+    #dplyr::rename the womanId variable to wife_id
+    dplyr::rename(husband_id=manId) 
   
   # next just combine the wife and husband columns into a spouse id column while
   # dumping the NA's
@@ -171,8 +171,8 @@ add_birthplace_data_to_person_table <- function(person, place) {
   #link to spouse id and add spouse population and region
   
   person_trimmed <- person %>% select("birthYear", "professionId", "returnedKarelia",
-                                        "weddingyear", "kids", "birthplace", "birthpopulation",
-                                        "birthregion", "birthlat", "birthlon", "spouse_id")
+                                      "weddingyear", "kids", "birthplace", "birthpopulation",
+                                      "birthregion", "birthlat", "birthlon", "spouse_id")
   person <- person %>%
     left_join(person_trimmed, by=c("id"="spouse_id"))
   
@@ -186,7 +186,7 @@ add_birthplace_data_to_person_table <- function(person, place) {
                           kids_spouse = kids.y, birthplace_spouse = birthplace.y,
                           birthpopulation_spouse = birthpopulation.y, birthregion_spouse = birthregion.y,
                           birthlat_spouse = birthlat.y, birthlon_spouse = birthlon.y)
- 
+  
   return(person)
 }
 
@@ -271,7 +271,7 @@ add_sons_and_daughters_to_person_table <- function(person, child) {
   mothersSons <- dplyr::rename(mothersSons, motherId = Group.1, sons = x)
   mothersDaughters <- dplyr::rename(mothersDaughters, motherId = Group.1, daughters = x)
   mothersKids <- merge(mothersSons, mothersDaughters, by="motherId")
-
+  
   fathersKids <- dplyr::rename(fathersKids, id = fatherId)
   person <- left_join(person, fathersKids, by=c("id"="id"))
   mothersKids <- dplyr::rename(mothersKids, id = motherId)
@@ -322,6 +322,51 @@ add_hectares_to_person_table <- function(person, farms) {
   return(person)
 }
 
+add_returned_to_karelia_for_spouses <- function(person) {
+  person$ret_kar <- ifelse(!person$primaryPerson &
+                             !is.na(person$spouse_id) &
+                             (person$birthYear < 1913 | person$weddingyear < 1942),
+                           person$returnedKarelia_spouse, person$returnedKarelia)
+  
+  person$ret_kar <- ifelse(person$primaryPerson,
+                           person$returnedKarelia, person$ret_kar)
+  
+  person$returnedKarelia <- person$ret_kar
+  person<- drop_columns_from_table(person, "ret_kar")
+  return(person)
+}
+
+add_first_and_last_destinations_to_person_table <- function(person, pops, livingrecord, place) {
+  
+  livingrecord$merged <- ifelse (is.na(livingrecord$movedIn), livingrecord$movedOut, livingrecord$movedIn)
+  livingrecord <- left_join(livingrecord, place, by = c("placeId" = "place_id"))
+  
+  merdata<-left_join(pops, livingrecord, by = c("name" = "name"))
+  merdata$merKarelia <- with(merdata, ifelse(merged>39 & merged <45 & region.y == "karelia",1,0))
+  merdata$merFinland <- with(merdata, ifelse(merged>38 & merged <42 & region.y == "other",1,0))
+  
+  merkar <- merdata[ which(merdata$merKarelia == 1), ]
+  merkar2 <- merkar %>% select(c("personId", "longitude", "latitude", "population.x", "merged", "DONT_USE"))
+  merkar3 <- merkar2 [order(merkar2$merged, decreasing = TRUE),]
+  merkar4 <- merkar3[!duplicated (merkar3$personId),]
+  
+  merfin <- merdata[which(merdata$merFinland == 1),]
+  merfin2 <- merfin %>% select(c("personId", "longitude", "latitude", "population.x", "merged", "DONT_USE"))
+  merfin3 <- merfin2 [order(merfin2$merged, decreasing = TRUE),]
+  merfin4 <- merfin3[!duplicated (merfin3$personId),]
+  
+  person <- left_join(person,merfin4, by = c("id" = "personId"))
+  person <- left_join(person,merkar4, by = c("id" = "personId"))
+  
+  drops = c("DONT_USE.x", "DONT_USE.y", "merged.x", "merged.y")
+  person <- drop_columns_from_table(person, drops)
+  person <- dplyr::rename(person,
+                          fdf_population = population.x.x, fdf_longitude = longitude.x, fdf_latitude = latitude.x,
+                          rdk_population = population.x.y, rdk_longitude = longitude.y, rdk_longitude = latitude.y)
+  
+  return(person) 
+}
+
 preprocess_place_table <- function(place, pops) {
   place <- fix_encoding_in_place_table(place)
   
@@ -333,7 +378,9 @@ preprocess_place_table <- function(place, pops) {
   place$region <- gsub("russia", "other", place$region)
   
   #subset 
-  place <- place %>% select(1:3,5,7:9) %>% rename(place_id=id)
+  place <- place %>% select(c("id", "name", "region",
+                              "extractedName", "latitude",
+                              "longitude", "ambiguousRegion")) %>% dplyr::rename(place_id=id)
   # add population table and profession details, use region from populations
   # count the unique values of places in places
   place <- place %>% left_join(pops, by= c("name"="name"))
@@ -342,18 +389,23 @@ preprocess_place_table <- function(place, pops) {
   place$region <- place$region.x
   place$region[is.na(place$region)] <- place$region.y[is.na(place$region)]
   #select the columns we want
-  place <- select(place,1:2,7,9,11:14) 
+  place <- select(place,c("place_id", "name", "ambiguousRegion", "frequency", "population", "latitude.y", "longitude.y", "region.y")) 
   place$lat <- place$latitude.y
   place$latitude.y <- NULL
   place$lon <- place$longitude.y
   place$longitude.y <- NULL
+  
+  drops <- c("region.x, region")
+  place <- drop_columns_from_table(place, drops)
+  
+  place <- dplyr::rename(place, region = region.y)
   
   return(place)
 }
 
 preprocess_profession_table <- function(profession, jobs) {
   profession <- fix_encoding_in_profession_table(profession)
-  profession <- select(profession, 1:2) %>% rename(profession_id=id)
+  profession <- select(profession, 1:2) %>% dplyr::rename(profession_id=id)
   
   profession <- profession %>% left_join(jobs,by=c("name"="profession"))
   profession <- profession %>% select(1,2,4,5,6,7,8,9,10,3) %>% arrange(desc(frequency))
@@ -369,8 +421,8 @@ preprocess_livingrecord_table <- function(livingrecord) {
 
 preprocess_person_table <- function(person) {
   person <- select(person, "id", "sex", "primaryPerson", "birthYear", "birthPlaceId",
-                           "ownHouse", "professionId", "returnedKarelia", "kairaId",
-                           "farmDetailsId", "lotta", "servedDuringWar", "injuredInWar")
+                   "ownHouse", "professionId", "returnedKarelia", "kairaId",
+                   "farmDetailsId", "lotta", "servedDuringWar", "injuredInWar")
   
   return(person)
 }
@@ -383,7 +435,7 @@ preprocess_marriage_table <- function(marriage) {
 
 preprocess_child_table <- function(child) {
   child <- select(child, 1,4,5,6,7,8)
-  child <- rename(child, child_id = id)
+  child <- dplyr::rename(child, child_id = id)
   
   return(child)
 }
@@ -428,19 +480,29 @@ drop_every_column_except_for <- function(table, names_to_keep) {
 }
 
 get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
+  print("Loading dependencies.")
   initialize_libraries()
+  print("Establishing database connection.")
   connection <- establish_database_connection()
   
   start_time <- Sys.time()
   
+  print("Downloading tables from DB.")
   person <- dbReadTable(connection, "Person")
+  print("Person table downloaded.")
   profession <- dbReadTable(connection, "Profession")
+  print("Profession table downloaded.")
   marriage <- dbReadTable(connection, "Marriage")
+  print("Marriage table downloaded.")
   child <- dbReadTable(connection, "Child")
+  print("Child table downloaded.")
   livingrecord <- dbReadTable(connection, "LivingRecord")
+  print("LivingRecord table downloaded.")
   place<- dbReadTable(connection, "Place")
+  print("Place table downloaded.")
   farms <- dbReadTable(connection, "FarmDetails")
-
+  print("Farms table downloaded.")
+  
   end_time <- Sys.time()
   
   if (time_download) {
@@ -450,31 +512,56 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   #make column names lower case
   #names(place)<- tolower(names(place))
   
+  print("Downloading pops from Googlesheets.")
   pops <- load_pops_from_googlesheets()
+  print("Downloading jobs from Googlesheets.")
   jobs <- load_jobs_from_googlesheets()
   
+  print("Preprocessing Place table.")
   place <- preprocess_place_table(place, pops)
+  print("Preprocessing Profession table.")
   profession <- preprocess_profession_table(profession, jobs)
   
+  print("Preprocessing Marriage table.")
   marriage <- preprocess_marriage_table(marriage)
+  print("Preprocessing Child table.")
   child <- preprocess_child_table(child)
   
-  karelian_names <- read_names_from_disk()
+  #print("Loading names from disk.")
+  #karelian_names <- read_names_from_disk()
+  print("Preprocessing Person table.")
   person <- preprocess_person_table(person)
-  person <- merge(person, karelian_names, by="kairaId")
+  #print("Merging names to Person table.")
+  #person <- merge(person, karelian_names, by="kairaId")
+  print("Adding spouse IDs to Person table.")
   person <- add_spouse_ids_to_person_table(person, marriage)
+  print("Adding number of children to Person table.")
   person <- add_number_of_children_to_person_table(person, child)
+  print("Adding birthplace data to Person table.")
   person <- add_birthplace_data_to_person_table(person, place)
+  print("Adding professions to Person table.")
   person <- add_professions_to_person_table(person, profession)
+  print("Adding LivingRecord data to Person table.")
   person <- add_livingrecord_data_to_person_table(person, livingrecord)
+  print("Adding outbred to Person table.")
   person <- add_outbred_to_person_table(person)
+  print("Adding sons and daughters to Person table.")
   person <- add_sons_and_daughters_to_person_table(person, child)
+  print("Adding age in 1970 and at marriage to Person table.")
   person <- add_age_in_1970_and_at_marriage(person)
+  print("Adding couple ID to Person table.")
   person <- add_couple_id_to_person_table(person)
+  print("Adding farm areas to Person table.")
   person <- add_hectares_to_person_table(person, farms)
+  print("Adding returned to karelia for spouses to Person table.")
+  person <- add_returned_to_karelia_for_spouses(person)
+  print("Postprocessing Person table.")
+  person <- add_first_and_last_destinations_to_person_table(person, pops, livingrecord, place)
   person_postprocessed <- postprocess_person_table(person)
   return(person_postprocessed)
 }
 
 person_data <- get_data_from_server_and_preprocess_it()
 saveRDS(person_data, "~/person_data.rds")
+save(person_data, file="~/person_data.Rda")
+#saveRDS(person_data, "~/person_data.rds")
