@@ -336,6 +336,11 @@ add_returned_to_karelia_for_spouses <- function(person) {
   return(person)
 }
 
+add_total_peacetime_migrations <- function(person) {
+  person$total_peacetime_migrations <- person$total_migrations-person$returnedkarelia
+  return(person)
+}
+
 add_first_and_last_destinations_to_person_table <- function(person, pops, livingrecord, place) {
   
   livingrecord$merged <- ifelse (is.na(livingrecord$movedIn), livingrecord$movedOut, livingrecord$movedIn)
@@ -555,8 +560,11 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   person <- add_hectares_to_person_table(person, farms)
   print("Adding returned to karelia for spouses to Person table.")
   person <- add_returned_to_karelia_for_spouses(person)
-  print("Postprocessing Person table.")
+  print("Adding FDF and RDK to Person table.")
   person <- add_first_and_last_destinations_to_person_table(person, pops, livingrecord, place)
+  print("Adding total peacetime migrations to Person table.")
+  person <- add_total_peacetime_migrations(person)
+  print("Postprocessing Person table.")
   person_postprocessed <- postprocess_person_table(person)
   return(person_postprocessed)
 }
