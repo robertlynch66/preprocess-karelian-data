@@ -313,6 +313,7 @@ add_couple_id_to_person_table <- function(person) {
 
 add_hectares_to_person_table <- function(person, farms) {
   person<-person %>%
+    
     left_join (farms, by = c("farmDetailsId"="id")) 
   
   drops <- c("dairyFarm","coldFarm",             
@@ -336,10 +337,7 @@ add_returned_to_karelia_for_spouses <- function(person) {
   return(person)
 }
 
-add_total_peacetime_migrations <- function(person) {
-  person$total_peacetime_migrations <- person$total_migrations-person$returnedkarelia
-  return(person)
-}
+
 
 add_first_and_last_destinations_to_person_table <- function(person, pops, livingrecord, place) {
   
@@ -370,6 +368,55 @@ add_first_and_last_destinations_to_person_table <- function(person, pops, living
                           rdk_population = population.x.y, rdk_longitude = longitude.y, rdk_latitude = latitude.y)
   
   return(person) 
+}
+
+add_total_peacetime_migrations <- function(person) {
+  person$returnedKarelia <- gsub("true",1, person$returnedKarelia)
+  person$returnedKarelia <- gsub( "false",0, person$returnedKarelia)
+  person$returnedKarelia <- gsub( "unknown",NA, person$returnedKarelia)
+  person$returnedKarelia <- as.integer(person$returnedKarelia)
+  
+  person$total_peacetime_migrations <- person$total_migrations-person$returnedKarelia
+  return(person)
+}
+
+add_first_child_birth_year <- function(person, child) {
+  # add children for mother ids
+    child_m <- child %>%
+      group_by (motherId) %>%
+      filter(birthYear == min(birthYear)) %>%
+      group_by (motherId) %>%
+      filter(child_id==min(child_id))
+    person2<- person %>%
+      left_join (child_m , by= c("id"="motherId")) %>%
+      select ("id","birthYear.y") %>%
+     dplyr::rename (mothers_first_child_YOB= birthYear.y)
+    
+  # add children for father ids
+    child_f <- child %>%
+      group_by (fatherId) %>%
+      filter (birthYear == min(birthYear)) %>%
+      group_by (fatherId) %>%
+        filter (child_id==min(child_id))
+    person3<- person2 %>%
+      left_join (child_f , by =c("id"="fatherId")) %>%
+      select ("id","mothers_first_child_YOB","birthYear") %>%
+    dplyr::rename ( fathers_first_child_YOB= birthYear)
+    
+    
+    person3$first_child_YOB <- ifelse(is.na(person3$mothers_first_child_YOB), 
+                                      person3$fathers_first_child_YOB, person3$mothers_first_child_YOB)
+    
+    person4 <- person3 %>% select ("id","first_child_YOB")
+    
+    person<- person %>% left_join (person4, by=c("id"="id"))
+    return(person)
+}
+
+add_age_at_first_birth <- function(person) {
+  person$age_at_first_birth<- person$first_child_YOB - person$birthYear
+
+  return(person)
 }
 
 preprocess_place_table <- function(place, pops) {
@@ -446,10 +493,6 @@ preprocess_child_table <- function(child) {
 }
 
 postprocess_person_table <- function(person) {
-  person$returnedKarelia <- gsub("true",1, person$returnedKarelia)
-  person$returnedKarelia <- gsub( "false",0, person$returnedKarelia)
-  person$returnedKarelia <- gsub( "unknown",NA, person$returnedKarelia)
-  person$returnedKarelia <- as.integer(person$returnedKarelia)
   person$sex <- gsub("m",1,person$sex)
   person$sex <- gsub("f",0,person$sex)
   person$sex <- as.integer(person$sex)
@@ -564,12 +607,23 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   person <- add_first_and_last_destinations_to_person_table(person, pops, livingrecord, place)
   print("Adding total peacetime migrations to Person table.")
   person <- add_total_peacetime_migrations(person)
+  
+  
+  print("Adding first child YOB to Person table.")
+  person <- add_first_child_birth_year(person, child)
+  
+  print("Adding age at first birth to Person table.")
+  person <- add_age_at_first_birth(person)
+  
   print("Postprocessing Person table.")
   person_postprocessed <- postprocess_person_table(person)
   return(person_postprocessed)
 }
 
+
 person_data <- get_data_from_server_and_preprocess_it()
+
+
 saveRDS(person_data, "~/person_data.rds")
-save(person_data, file="~/person_data.Rda")
+
 #saveRDS(person_data, "~/person_data.rds")
