@@ -41,10 +41,10 @@ load_pops_from_googlesheets <- function() {
 load_jobs_from_googlesheets <- function() {
   # Read in the csv files populations and occupations with social status
   
-  # get the professions google sheet
+  # Get the professions google sheet
   jobs <- gs_title("Occupations")
   
-  # get the sheet
+  # Get the sheet
   jobs <- gs_read(ss=jobs, ws = "Sheet1", header=TRUE)
   
   # convert to data.frame
