@@ -166,18 +166,18 @@ add_birthplace_data_to_person_table <- function(person, place) {
   #link to spouse id and add spouse population and region
   
   person_trimmed <- person %>% select("birthYear", "professionId", "returnedKarelia",
-                                      "weddingyear", "kids", "birthplace", "birthpopulation",
+                                      "weddingYear", "kids", "birthplace", "birthpopulation",
                                       "birthregion", "birthlat", "birthlon", "spouse_id")
   person <- person %>%
     left_join(person_trimmed, by=c("id"="spouse_id"))
   
   person <- dplyr::rename(person,
                           birthYear = birthYear.x, professionId = professionId.x,
-                          returnedKarelia = returnedKarelia.x, weddingyear = weddingyear.x,
+                          returnedKarelia = returnedKarelia.x, weddingyear = weddingYear.x,
                           kids = kids.x, birthplace = birthplace.x, birthpopulation = birthpopulation.x,
                           birthregion = birthregion.x, birthlat = birthlat.x, birthlon = birthlon.x,
                           birthYear_spouse = birthYear.y, professionId_spouse = professionId.y,
-                          returnedKarelia_spouse = returnedKarelia.y, weddingyear_spouse = weddingyear.y,
+                          returnedKarelia_spouse = returnedKarelia.y, weddingyear_spouse = weddingYear.y,
                           kids_spouse = kids.y, birthplace_spouse = birthplace.y,
                           birthpopulation_spouse = birthpopulation.y, birthregion_spouse = birthregion.y,
                           birthlat_spouse = birthlat.y, birthlon_spouse = birthlon.y)
@@ -416,7 +416,101 @@ add_first_child_birth_year <- function(person, child) {
 
 add_age_at_first_birth <- function(person) {
   person$age_at_first_birth<- person$first_child_YOB - person$birthYear
+  return(person)
+}
 
+add_military_ranks_to_persons_table <- function(person, militaryranks) {
+  militaryranks <- drop_columns_from_table(militaryranks, c("editLog")) %>% 
+    dplyr::rename (militaryrank= name)
+  person <- person %>% left_join (militaryranks, by= c("militaryRankId"="id")) 
+  person <- drop_columns_from_table(person, c("militaryRankId"))
+
+  person$militaryrank_english <- ifelse(person$militaryrank=="sotamies","private",
+  ifelse(person$militaryrank=="matruusi","seaman",
+  ifelse(person$militaryrank=="korpraali","corporal",
+  ifelse(person$militaryrank=="ylimatruusi","higher seaman",
+  ifelse(person$militaryrank=="alikersantti","lower sergeant",
+  ifelse(person$militaryrank=="kersantti","sergeant",
+  ifelse(person$militaryrank=="ylikersantti","higher sergeant",
+  ifelse(person$militaryrank=="vääpeli","NCO",
+  ifelse(person$militaryrank=="pursimies","petty officer",
+  ifelse(person$militaryrank=="ylivääpeli","higher NCO",
+  ifelse(person$militaryrank=="ylipursimies","higher petty officer",
+  ifelse(person$militaryrank=="sotilasmestari","sergeant major",
+  ifelse(person$militaryrank=="vänrikki","second lieutenant",
+  ifelse(person$militaryrank=="aliluutnantti","lower lieutenant",
+  ifelse(person$militaryrank=="luutnantti","lieutenant",
+  ifelse(person$militaryrank=="yliluutnantti","higher lieutenant",
+  ifelse(person$militaryrank=="kapteeni","captain",
+  ifelse(person$militaryrank=="kapteeniluutnantti","captain-lieutenant",
+  ifelse(person$militaryrank=="majuri","major",
+  ifelse(person$militaryrank=="komentajakapteeni","commander-captain",
+  ifelse(person$militaryrank=="everstiluutnantti","colonel-lieutenant",
+  ifelse(person$militaryrank=="komentaja","commander",
+  ifelse(person$militaryrank=="eversti","colonel",
+  ifelse(person$militaryrank=="kommodori","commodore",
+  ifelse(person$militaryrank=="kenraalimajuri","general-major",
+  ifelse(person$militaryrank=="kenraaliluutnantti","general-lieutenant",
+  ifelse(person$militaryrank=="kenraali","general",NA)))))))))))))))))))))))))))
+  
+  
+  person$militaryrank_hierarchy <- ifelse(person$militaryrank=="sotamies",1,
+  ifelse(person$militaryrank=="matruusi",1,
+  ifelse(person$militaryrank=="korpraali",2,
+  ifelse(person$militaryrank=="ylimatruusi",2,
+  ifelse(person$militaryrank=="alikersantti",3,
+  ifelse(person$militaryrank=="kersantti",4,
+  ifelse(person$militaryrank=="ylikersantti",5,
+  ifelse(person$militaryrank=="vääpeli",6,
+  ifelse(person$militaryrank=="pursimies",6,
+  ifelse(person$militaryrank=="ylivääpeli",7,
+  ifelse(person$militaryrank=="ylipursimies",7,
+  ifelse(person$militaryrank=="sotilasmestari",8,
+  ifelse(person$militaryrank=="vänrikki",9,
+  ifelse(person$militaryrank=="aliluutnantti",9,
+  ifelse(person$militaryrank=="luutnantti",10,
+  ifelse(person$militaryrank=="yliluutnantti",11,
+  ifelse(person$militaryrank=="kapteeni",12,
+  ifelse(person$militaryrank=="kapteeniluutnantti",12,
+  ifelse(person$militaryrank=="majuri",13,
+  ifelse(person$militaryrank=="komentajakapteeni",13,
+  ifelse(person$militaryrank=="everstiluutnantti",14,
+  ifelse(person$militaryrank=="komentaja",14,
+  ifelse(person$militaryrank=="eversti",15,
+  ifelse(person$militaryrank=="kommodori",15,
+  ifelse(person$militaryrank=="kenraalimajuri",16,
+  ifelse(person$militaryrank=="kenraaliluutnantti",17,
+  ifelse(person$militaryrank=="kenraali",18, NA)))))))))))))))))))))))))))
+  
+  
+  person$militaryrank_group <- ifelse(person$militaryrank=="sotamies","Crew",
+  ifelse(person$militaryrank=="matruusi","Crew",
+  ifelse(person$militaryrank=="korpraali","Crew",
+  ifelse(person$militaryrank=="ylimatruusi","Crew",
+  ifelse(person$militaryrank=="alikersantti","Non-commissioned officers",
+  ifelse(person$militaryrank=="kersantti","Non-commissioned officers",
+  ifelse(person$militaryrank=="ylikersantti","Non-commissioned officers",
+  ifelse(person$militaryrank=="vääpeli","Non-commissioned officers",
+  ifelse(person$militaryrank=="pursimies","Non-commissioned officers",
+  ifelse(person$militaryrank=="ylivääpeli","Non-commissioned officers",
+  ifelse(person$militaryrank=="ylipursimies","Non-commissioned officers",
+  ifelse(person$militaryrank=="sotilasmestari","Non-commissioned officers",
+  ifelse(person$militaryrank=="vänrikki","Company officer",
+  ifelse(person$militaryrank=="aliluutnantti","Company officer",
+  ifelse(person$militaryrank=="luutnantti","Company officer",
+  ifelse(person$militaryrank=="yliluutnantti","Company officer",
+  ifelse(person$militaryrank=="kapteeni","Company officer",
+  ifelse(person$militaryrank=="kapteeniluutnantti","Company officer",
+  ifelse(person$militaryrank=="majuri","Field officer",
+  ifelse(person$militaryrank=="komentajakapteeni","Field officer",
+  ifelse(person$militaryrank=="everstiluutnantti","Field officer",
+  ifelse(person$militaryrank=="komentaja","Field officer",
+  ifelse(person$militaryrank=="eversti","Field officer",
+  ifelse(person$militaryrank=="kommodori","Field officer",
+  ifelse(person$militaryrank=="kenraalimajuri","Field officer",
+  ifelse(person$militaryrank=="kenraaliluutnantti","Field officer",
+  ifelse(person$militaryrank=="kenraali","Field officer", NA)))))))))))))))))))))))))))
+  
   return(person)
 }
 
@@ -554,6 +648,7 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   print("Place table downloaded.")
   farms <- dbReadTable(connection, "FarmDetails")
   print("Farms table downloaded.")
+  militaryranks <- dbReadTable(connection, "MilitaryRank")
   
   end_time <- Sys.time()
   
@@ -613,12 +708,12 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   person <- add_total_peacetime_migrations(person)
   print("Adding previous marriages flag")
   person <- add_previous_marriages_flag(person)
-  
   print("Adding first child YOB to Person table.")
   person <- add_first_child_birth_year(person, child)
-  
   print("Adding age at first birth to Person table.")
   person <- add_age_at_first_birth(person)
+  print("Adding military ranks to persons table")
+  person <- add_military_ranks_to_persons_table(person, militaryranks)
   
   print("Postprocessing Person table.")
   person_postprocessed <- postprocess_person_table(person)
