@@ -101,49 +101,44 @@ fix_encoding_in_profession_table <- function(profession) {
 
 add_spouse_ids_to_person_table <- function(person, marriage) {
   # find all married men and join them to their wives
-  person <- person %>% 
-    left_join(marriage, by=c("id"="manId")) %>% 
-    #rename the womanId variable to wife_id
-    dplyr::rename(wife_id=womanId) %>%
-    # add the married women
-    left_join(marriage, by=c("id"="womanId")) %>% 
-    #dplyr::rename the womanId variable to wife_id
-    dplyr::rename(husband_id=manId) 
+  person <- person %>%
+    left_join(marriage, by = c("id"="primaryId")) %>%
+    left_join(marriage, by = c("id"="spouseId")) 
   
-  # next just combine the wife and husband columns into a spouse id column while
-  # dumping the NA's
-  person$spouse_id <- person$wife_id
-  person$spouse_id[is.na(person$spouse_id)] <- person$husband_id[is.na(person$spouse_id)]
-  # repeat for the wedding year
-  person$weddingyear <- person$weddingYear.x
-  person$weddingyear[is.na(person$weddingyear)] <- person$weddingYear.y[is.na(person$weddingyear)]
   
-  drops <- c("wife_id", "husband_id", "weddingYear.x", "weddingYear.y")
-  person <- drop_columns_from_table(person, drops)
+  person$weddingYear = person$weddingYear.x  # your new merged column start with x
+  person$weddingYear[!is.na(person$weddingYear.y)] = person$weddingYear.y[!is.na(person$weddingYear.y)] # merge with y
+  person$weddingYear <- ifelse(person$weddingYear < 1970, person$weddingYear, person$weddingYear-100)
+  drops <- c("weddingYear.x","weddingYear.y")
+  person <- drop_columns_from_table(person,drops)
   
+  person$spouse_id = person$spouseId  # your new merged column start with x
+  person$spouse_id[!is.na(person$primaryId)] = person$primaryId[!is.na(person$primaryId)]  # merge with y
+  drops <- c("primaryId","spouseId")
+  person <- drop_columns_from_table(person,drops)
   return(person)
 }
 
 add_number_of_children_to_person_table <- function(person, child) {
   # add number of kids for dads
   child2 <- child %>%
-    group_by(fatherId) %>%
-    summarise(dads_kids=n()) 
+    group_by(primaryParentId) %>%
+    summarise(primarys_kids=n()) 
   # add number of kids for moms
   child3 <- child %>%
-    group_by(motherId) %>%
-    summarise(moms_kids=n())
+    group_by(spouseParentId) %>%
+    summarise(spouses_kids=n())
   
   # row_bind the two tables
   num_kids <- bind_rows(child2,child3)
   #combine the columns kids
-  num_kids$kids <- num_kids$dads_kids
-  num_kids$kids[is.na(num_kids$kids)] <- num_kids$moms_kids[is.na(num_kids$kids)]
+  num_kids$kids <- num_kids$primarys_kids
+  num_kids$kids[is.na(num_kids$kids)] <- num_kids$spouses_kids[is.na(num_kids$kids)]
   #combine the columns mother and father ids
-  num_kids$id <- num_kids$fatherId
-  num_kids$id[is.na(num_kids$id)] <- num_kids$motherId[is.na(num_kids$id)]
+  num_kids$id <- num_kids$primaryParentId
+  num_kids$id[is.na(num_kids$id)] <- num_kids$spouseParentId[is.na(num_kids$id)]
   #delete redundant columns
-  num_kids <- num_kids %>% select (6,5) %>%
+  num_kids <- num_kids %>% select ("kids", "id") %>%
     #sort by id
     arrange(id)
   
@@ -245,37 +240,43 @@ add_outbred_to_person_table <- function(person) {
   return(person)
 }
 
+add_previous_marriages_flag <- function(person) {
+  person <- person %>% 
+    mutate(previous_marriage = ifelse (previousMarriages== "true", 1, 0))
+  return(person)
+}
+
 add_sons_and_daughters_to_person_table <- function(person, child) {
   # add sons and daughters to m table
   # add number of kids for dads
-  father <- child %>%
-    group_by(fatherId, sex) %>%
-    summarise(dads_kids=n()) 
+  primary <- child %>%
+    group_by(primaryParentId, sex) %>%
+    summarise(primarys_kids=n()) %>% na.omit()
   # add number of kids for moms
-  mother <- child %>%
-    group_by(motherId, sex) %>%
-    summarise(moms_kids=n())
+  spouse <- child %>%
+    group_by(spouseParentId, sex) %>%
+    summarise(spouses_kids=n()) %>% na.omit()
   
-  father$daughters <- ifelse(father$sex == "f", father$dads_kids, 0)
-  father$sons <- ifelse(father$sex == "m", father$dads_kids, 0)
-  fathersSons <- aggregate(father$sons, by=list(father$fatherId), FUN=sum)
-  fathersDaughters <- aggregate(father$daughters, by=list(father$fatherId), FUN=sum)
-  fathersSons <- dplyr::rename(fathersSons, fatherId = Group.1, sons = x)
-  fathersDaughters <- dplyr::rename(fathersDaughters, fatherId = Group.1, daughters = x)
-  fathersKids <- merge(fathersSons, fathersDaughters, by="fatherId")
+  primary$daughters <- ifelse(primary$sex == "f", primary$primarys_kids, 0)
+  primary$sons <- ifelse(primary$sex == "m", primary$primarys_kids, 0)
+  primarysSons <- aggregate(primary$sons, by=list(primary$primaryParentId), FUN=sum)
+  primarysDaughters <- aggregate(primary$daughters, by=list(primary$primaryParentId), FUN=sum)
+  primarysSons <- dplyr::rename(primarysSons, primaryParentId = Group.1, sons = x)
+  primarysDaughters <- dplyr::rename(primarysDaughters, primaryParentId = Group.1, daughters = x)
+  primarysKids <- merge(primarysSons, primarysDaughters, by="primaryParentId")
   
-  mother$daughters <- ifelse(mother$sex == "f", mother$moms_kids, 0)
-  mother$sons <- ifelse(mother$sex == "m", mother$moms_kids, 0)
-  mothersSons <- aggregate(mother$sons, by=list(mother$motherId), FUN=sum)
-  mothersDaughters <- aggregate(mother$daughters, by=list(mother$motherId), FUN=sum)
-  mothersSons <- dplyr::rename(mothersSons, motherId = Group.1, sons = x)
-  mothersDaughters <- dplyr::rename(mothersDaughters, motherId = Group.1, daughters = x)
-  mothersKids <- merge(mothersSons, mothersDaughters, by="motherId")
+  spouse$daughters <- ifelse(spouse$sex == "f", spouse$spouses_kids, 0)
+  spouse$sons <- ifelse(spouse$sex == "m", spouse$spouses_kids, 0)
+  spousesSons <- aggregate(spouse$sons, by=list(spouse$spouseParentId), FUN=sum)
+  spousesDaughters <- aggregate(spouse$daughters, by=list(spouse$spouseParentId), FUN=sum)
+  spousesSons <- dplyr::rename(spousesSons, spouseParentId = Group.1, sons = x)
+  spousesDaughters <- dplyr::rename(spousesDaughters, spouseParentId = Group.1, daughters = x)
+  spousesKids <- merge(spousesSons, spousesDaughters, by="spouseParentId")
   
-  fathersKids <- dplyr::rename(fathersKids, id = fatherId)
-  person <- left_join(person, fathersKids, by=c("id"="id"))
-  mothersKids <- dplyr::rename(mothersKids, id = motherId)
-  person <- left_join(person, mothersKids, by=c("id"="id"))
+  primarysKids <- dplyr::rename(primarysKids, id = primaryParentId)
+  person <- left_join(person, primarysKids, by=c("id"="id"))
+  spousesKids <- dplyr::rename(spousesKids, id = spouseParentId)
+  person <- left_join(person, spousesKids, by=c("id"="id"))
   person$daughters <- ifelse(is.na(person$daughters.x), person$daughters.y, person$daughters.x)
   person$sons <- ifelse(is.na(person$sons.x), person$sons.y, person$sons.x)
   
@@ -382,30 +383,30 @@ add_total_peacetime_migrations <- function(person) {
 
 add_first_child_birth_year <- function(person, child) {
   # add children for mother ids
-    child_m <- child %>%
-      group_by (motherId) %>%
+    child_spouse <- child %>%
+      group_by (spouseParentId) %>%
       filter(birthYear == min(birthYear)) %>%
-      group_by (motherId) %>%
+      group_by (spouseParentId) %>%
       filter(child_id==min(child_id))
     person2<- person %>%
-      left_join (child_m , by= c("id"="motherId")) %>%
+      left_join (child_spouse , by= c("id"="spouseParentId")) %>%
       select ("id","birthYear.y") %>%
-     dplyr::rename (mothers_first_child_YOB= birthYear.y)
+     dplyr::rename (spouses_first_child_YOB= birthYear.y)
     
   # add children for father ids
-    child_f <- child %>%
-      group_by (fatherId) %>%
+    child_primary <- child %>%
+      group_by (primaryParentId) %>%
       filter (birthYear == min(birthYear)) %>%
-      group_by (fatherId) %>%
+      group_by (primaryParentId) %>%
         filter (child_id==min(child_id))
     person3<- person2 %>%
-      left_join (child_f , by =c("id"="fatherId")) %>%
-      select ("id","mothers_first_child_YOB","birthYear") %>%
-    dplyr::rename ( fathers_first_child_YOB= birthYear)
+      left_join (child_primary , by =c("id"="primaryParentId")) %>%
+      select ("id","spouses_first_child_YOB","birthYear") %>%
+    dplyr::rename ( primaries_first_child_YOB= birthYear)
     
     
-    person3$first_child_YOB <- ifelse(is.na(person3$mothers_first_child_YOB), 
-                                      person3$fathers_first_child_YOB, person3$mothers_first_child_YOB)
+    person3$first_child_YOB <- ifelse(is.na(person3$spouses_first_child_YOB), 
+                                      person3$primaries_first_child_YOB, person3$spouses_first_child_YOB)
     
     person4 <- person3 %>% select ("id","first_child_YOB")
     
@@ -474,19 +475,22 @@ preprocess_livingrecord_table <- function(livingrecord) {
 preprocess_person_table <- function(person) {
   person <- select(person, "id", "sex", "primaryPerson", "birthYear", "birthPlaceId",
                    "ownHouse", "professionId", "returnedKarelia", "kairaId",
-                   "farmDetailsId", "lotta", "servedDuringWar", "injuredInWar")
+                   "farmDetailsId", "lotta", "servedDuringWar", "injuredInWar","previousMarriages",
+                   "foodLotta","officeLotta","nurseLotta","antiairLotta","pikkulotta","organizationLotta",
+                   "martta","katihaId","militaryRankId")
   
   return(person)
 }
 
 preprocess_marriage_table <- function(marriage) {
-  marriage <- select(marriage, 2:4)
+  drops <- c("id", "markRowForRemoval", "editLog")
+  marriage <- drop_columns_from_table(marriage, drops)
   
   return(marriage)
 }
 
 preprocess_child_table <- function(child) {
-  child <- select(child, 1,4,5,6,7,8)
+  child <- select(child, "id", "sex", "birthYear", "birthPlaceId", "primaryParentId", "spouseParentId")
   child <- dplyr::rename(child, child_id = id)
   
   return(child)
@@ -607,7 +611,8 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   person <- add_first_and_last_destinations_to_person_table(person, pops, livingrecord, place)
   print("Adding total peacetime migrations to Person table.")
   person <- add_total_peacetime_migrations(person)
-  
+  print("Adding previous marriages flag")
+  person <- add_previous_marriages_flag(person)
   
   print("Adding first child YOB to Person table.")
   person <- add_first_child_birth_year(person, child)
