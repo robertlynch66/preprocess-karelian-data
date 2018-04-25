@@ -339,7 +339,6 @@ add_returned_to_karelia_for_spouses <- function(person) {
 }
 
 
-
 add_first_and_last_destinations_to_person_table <- function(person, pops, livingrecord, place) {
   
   livingrecord$merged <- ifelse (is.na(livingrecord$movedIn), livingrecord$movedOut, livingrecord$movedIn)
@@ -514,6 +513,60 @@ add_military_ranks_to_persons_table <- function(person, militaryranks) {
   return(person)
 }
 
+
+add_number_of_brothers_and_sisters_and_raw_katiha_data <- function(person, katihaperson) {
+   kp <- katihaperson %>% 
+     group_by (familyId, sex) %>%
+     summarise (siblings = n()) %>% na.omit()
+   # make sisters and bothers tables
+   sisters <- kp %>% filter (sex=="f") %>%
+   dplyr::rename (sisters= siblings)
+   brothers <- kp %>% filter (sex=="m") %>%
+   dplyr::rename (brothers = siblings)
+   # join sisters and brothers back to katiha person table
+   kp <- kp %>% left_join (sisters, by = c("familyId"="familyId"))
+   kp <- kp %>% left_join (brothers, by = c("familyId"="familyId")) 
+   # drop unnecessary columns
+   kp <- drop_columns_from_table(kp,c("sex", "sex.x", "siblings", "sex.y")) 
+   # replace all NA's with 0
+   kp[is.na(kp)] <- 0
+   # remove duplicates
+   kp <- unique(kp)
+   # joinnumber of brothers and sisters back to katihapersontable
+   katihaperson <- katihaperson %>% left_join(kp, by = c("familyId"="familyId")) %>%
+     dplyr::rename (sex_katiha = sex)
+   katihaperson <- drop_columns_from_table(katihaperson,c("birthDay", "birthMonth", "birthYear")) 
+  #link person table "katihaId" to katihaperson table "id"
+   person <- person %>% left_join (katihaperson, by = c("katihaId"="id"))
+   
+   # subtract sex of id for true brothers or sisters
+   person$brothers <- ifelse(person$sex=="m",person$brothers-1,person$brothers)
+   person$sisters <- ifelse(person$sex=="f",person$sisters-1,person$sisters)
+   
+   #add brothers and sisters to get siblings
+   person$siblings <- person$brothers + person$sisters
+   # replace missing sex from our data with sex_katiha
+   person$sex <- ifelse(is.na(person$sex), person$sex_katiha, person$sex) 
+   
+   return(person)
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 preprocess_place_table <- function(place, pops) {
   place <- fix_encoding_in_place_table(place)
   
@@ -633,6 +686,7 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   
   start_time <- Sys.time()
   
+  # Downloading tables form the server
   print("Downloading tables from DB.")
   person <- dbReadTable(connection, "Person")
   print("Person table downloaded.")
@@ -649,7 +703,17 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   farms <- dbReadTable(connection, "FarmDetails")
   print("Farms table downloaded.")
   militaryranks <- dbReadTable(connection, "MilitaryRank")
-  
+  print("Military ranks table downloaded")
+  katihaperson <- dbGetQuery(connection, "SELECT * FROM \"katiha\".\"KatihaPerson\";")
+  print("Katiha person table downloaded")
+  departuretype <- dbGetQuery(connection, "SELECT * FROM \"katiha\".\"DepartureType\";")
+  print("DepartureType table downloaded")
+  language <- dbGetQuery(connection, "SELECT * FROM \"katiha\".\"Language\";")
+  print("Language table downloaded")
+  birthinmarriagecode <- dbGetQuery(connection, "SELECT * FROM \"katiha\".\"BirthInMarriageCode\";")
+  print("Birth in marriage code table downloaded")
+  family <- dbGetQuery(connection, "SELECT * FROM \"katiha\".\"Family\";")
+  print("Family table downloaded")
   end_time <- Sys.time()
   
   if (time_download) {
@@ -714,7 +778,8 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   person <- add_age_at_first_birth(person)
   print("Adding military ranks to persons table")
   person <- add_military_ranks_to_persons_table(person, militaryranks)
-  
+  print("Adding number of brothers and sisters")
+  person <- add_number_of_brothers_and_sisters_and_raw_katiha_data(person, katihaperson)
   print("Postprocessing Person table.")
   person_postprocessed <- postprocess_person_table(person)
   return(person_postprocessed)
