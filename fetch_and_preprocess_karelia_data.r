@@ -513,7 +513,6 @@ add_military_ranks_to_persons_table <- function(person, militaryranks) {
   return(person)
 }
 
-
 add_number_of_brothers_and_sisters_and_raw_katiha_data <- function(person, katihaperson) {
    kp <- katihaperson %>% 
      group_by (familyId, sex) %>%
@@ -551,21 +550,27 @@ add_number_of_brothers_and_sisters_and_raw_katiha_data <- function(person, katih
    return(person)
 }
 
+add_birth_order <- function (person, katihaperson) {
+  kp <- katihaperson %>% arrange(familyId, birthYear, birthMonth) %>%
+    group_by(familyId) %>% mutate(birthorder = row_number())
+  kp <- kp %>% select (id,birthorder)
+  kp$birthorder <- ifelse (is.na(kp$familyId),NA,kp$birthorder)
+  kp <- kp %>% drop_columns_from_table(c("familyId"))
+  person <- person %>% left_join (kp, by = c("katihaId"="id"))
+ 
+  return(person)
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# add later the sibling details by categories you are interested in looking at
+add_language_departure_type_and_birth_in_marriage <- function (person, language, departure_type, birth_in_marriage){
+  person <- person %>% left_join(language, by = c("motherLanguageId"="id"))
+  person <- person %>% left_join(departure_type, by = c("departureTypeId"="id")) %>%
+    dplyr::rename (departureType= type)
+  person <- person %>% left_join(birth_in_marriage, by =c("birthInMarriage"="code"))
+  drops <- c("motherLanguageId","departureTypeId","birthInMarriage")
+  person <- drop_columns_from_table(person, drops)
+  return(person)
+}
 
 preprocess_place_table <- function(place, pops) {
   place <- fix_encoding_in_place_table(place)
@@ -780,6 +785,10 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   person <- add_military_ranks_to_persons_table(person, militaryranks)
   print("Adding number of brothers and sisters")
   person <- add_number_of_brothers_and_sisters_and_raw_katiha_data(person, katihaperson)
+  print("Adding birth order")
+  person <- add_birth_order(person, katihaperson)
+  print("adding some useless variables")
+  person <- add_language_departure_type_and_birth_in_marriage(person, language, departuretype, birthinmarriagecode)
   print("Postprocessing Person table.")
   person_postprocessed <- postprocess_person_table(person)
   return(person_postprocessed)
