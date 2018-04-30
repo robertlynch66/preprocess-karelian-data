@@ -514,6 +514,7 @@ add_military_ranks_to_persons_table <- function(person, militaryranks) {
 }
 
 add_number_of_brothers_and_sisters_and_raw_katiha_data <- function(person, katihaperson) {
+  # replace missing sex from our data with sex_katiha
    kp <- katihaperson %>% 
      group_by (familyId, sex) %>%
      summarise (siblings = n()) %>% na.omit()
@@ -537,15 +538,14 @@ add_number_of_brothers_and_sisters_and_raw_katiha_data <- function(person, katih
    katihaperson <- drop_columns_from_table(katihaperson,c("birthDay", "birthMonth", "birthYear")) 
   #link person table "katihaId" to katihaperson table "id"
    person <- person %>% left_join (katihaperson, by = c("katihaId"="id"))
-   
+   person$sex <- ifelse(!is.na(person$sex_katiha), person$sex_katiha, person$sex) 
    # subtract sex of id for true brothers or sisters
    person$brothers <- ifelse(person$sex=="m",person$brothers-1,person$brothers)
    person$sisters <- ifelse(person$sex=="f",person$sisters-1,person$sisters)
    
    #add brothers and sisters to get siblings
    person$siblings <- person$brothers + person$sisters
-   # replace missing sex from our data with sex_katiha
-   person$sex <- ifelse(is.na(person$sex), person$sex_katiha, person$sex) 
+ 
    
    return(person)
 }
