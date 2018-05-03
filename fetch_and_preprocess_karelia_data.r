@@ -114,8 +114,8 @@ add_spouse_ids_to_person_table <- function(person, marriage) {
   
   person$spouse_id = person$spouseId  # your new merged column start with x
   person$spouse_id[!is.na(person$primaryId)] = person$primaryId[!is.na(person$primaryId)]  # merge with y
-  drops <- c("primaryId","spouseId")
-  person <- drop_columns_from_table(person,drops)
+  # drops <- c("primaryId","spouseId")
+  # person <- drop_columns_from_table(person,drops)
   return(person)
 }
 
@@ -413,6 +413,39 @@ add_first_child_birth_year <- function(person, child) {
     return(person)
 }
 
+add_last_child_birth_year <- function(person, child) {
+  # add children for mother ids
+  child_spouse <- child %>%
+    group_by (spouseParentId) %>%
+    filter(birthYear == max(birthYear)) %>%
+    group_by (spouseParentId) %>%
+    filter(child_id==max(child_id))
+  person2<- person %>%
+    left_join (child_spouse , by= c("id"="spouseParentId")) %>%
+    select ("id","birthYear.y") %>%
+    dplyr::rename (spouses_last_child_YOB= birthYear.y)
+  
+  # add children for father ids
+  child_primary <- child %>%
+    group_by (primaryParentId) %>%
+    filter (birthYear == max(birthYear)) %>%
+    group_by (primaryParentId) %>%
+    filter (child_id==max(child_id))
+  person3<- person2 %>%
+    left_join (child_primary , by =c("id"="primaryParentId")) %>%
+    select ("id","spouses_last_child_YOB","birthYear") %>%
+    dplyr::rename ( primaries_last_child_YOB= birthYear)
+  
+  
+  person3$last_child_YOB <- ifelse(is.na(person3$spouses_last_child_YOB), 
+                                    person3$primaries_last_child_YOB, person3$spouses_last_child_YOB)
+  
+  person4 <- person3 %>% select ("id","last_child_YOB")
+  
+  person<- person %>% left_join (person4, by=c("id"="id"))
+  return(person)
+}
+
 add_age_at_first_birth <- function(person) {
   person$age_at_first_birth<- person$first_child_YOB - person$birthYear
   return(person)
@@ -569,6 +602,18 @@ add_language_departure_type_and_birth_in_marriage <- function (person, language,
   person <- person %>% left_join(birth_in_marriage, by =c("birthInMarriage"="code"))
   drops <- c("motherLanguageId","departureTypeId","birthInMarriage")
   person <- drop_columns_from_table(person, drops)
+  return(person)
+}
+
+add_husbands_war_records <- function(person){
+  husband_service <- person %>% filter (sex=='m') %>%
+    select (id,injuredInWar,servedDuringWar,militaryrank_group,militaryrank_hierarchy)
+  
+  husband_service <- dplyr::rename(husband_service, injuredinwar_husband=injuredInWar, servedduringwar_husband=servedDuringWar,
+                       militaryrank_group_husband=militaryrank_group,
+                       militaryrank_hierarchy_husband=militaryrank_hierarchy)
+  
+  person <- left_join (person, husband_service, by=c("spouse_id"="id"))
   return(person)
 }
 
@@ -779,6 +824,8 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   person <- add_previous_marriages_flag(person)
   print("Adding first child YOB to Person table.")
   person <- add_first_child_birth_year(person, child)
+  print("Adding last child YOB to person table.")
+  person <- add_last_child_birth_year(person, child)
   print("Adding age at first birth to Person table.")
   person <- add_age_at_first_birth(person)
   print("Adding military ranks to persons table")
@@ -789,6 +836,8 @@ get_data_from_server_and_preprocess_it <- function(time_download=FALSE) {
   person <- add_birth_order(person, katihaperson)
   print("adding some useless variables")
   person <- add_language_departure_type_and_birth_in_marriage(person, language, departuretype, birthinmarriagecode)
+  print ("adding husband war records")
+  person <- add_husbands_war_records(person)
   print("Postprocessing Person table.")
   person_postprocessed <- postprocess_person_table(person)
   return(person_postprocessed)
